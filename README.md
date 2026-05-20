@@ -1,165 +1,152 @@
-# MMC_closedloop_NLM
+# MMC Local-Rank Open-Loop Control — Corrected v1
 
-Closed-loop **Modular Multilevel Converter (MMC)** repository for MATLAB/Simulink development and future OwnTech/TWIST embedded deployment.
+Repository for the MATLAB/Simulink **Modular Multilevel Converter (MMC)** open-loop local-rank controller, organized in the same general style as the referenced OwnTech/MMC repository.
 
-This repository follows the same general style as the CARROTS / OwnTech MMC branch:
+---
+
+## 1. Current corrected model
+
+Corrected model version:
 
 ```text
-MMC_closedloop_NLM
+MMC_phase_hackathon_circuit4_HAAS_may1_localrank_corrected_v1.slx
+```
+
+Expected repository location:
+
+```text
+MMC_models/MMC_phase_hackathon_circuit4_HAAS_may1_localrank_corrected_v1.slx
+```
+
+The corrected model modifies the open-loop local-rank controller while preserving the general MMC model organization.
+
+---
+
+## 2. Repository structure
+
+```text
+zaidon87-MMC_phase_hackathon_circuit4_HAAS_may1_localrank
 ├── .github/
 │   └── ISSUE_TEMPLATE/
 ├── .vscode/
 ├── MMC_documentation/
+│   └── model_notes.md
 ├── MMC_models/
-│   └── MMC_phase_hackathon_circuit4_HAAS_may1_localrank.slx
+│   ├── open_model.m
+│   └── README_MODEL_FILE.md
 ├── docs/
 │   ├── requirements.md
 │   ├── control_architecture.md
 │   ├── consensus_vs_local_rank.md
-│   └── decentralized_roadmap.md
+│   ├── decentralized_roadmap.md
+│   └── localrank_correction_v1.md
 ├── models/
 │   └── README.md
 ├── owntech/
+│   └── README.md
 ├── src/
 │   ├── main.cpp
 │   ├── mmc_closedloop_nlm.hpp
 │   └── mmc_closedloop_nlm.cpp
 ├── zephyr/
+│   └── prj.conf
 ├── .gitignore
 ├── LICENSE
 ├── platformio.ini
-├── west.yml
 └── README.md
 ```
 
 ---
 
-## 1. Project objective
+## 3. Correction summary
 
-The objective is to organize a simulation-ready MMC closed-loop Nearest Level Modulation / Nearest Level Control repository and prepare a clean path toward decentralized control.
+The original open-loop local-rank controller used the neighbor-balancing term directly in the local submodule duty calculation:
 
-The current model is:
-
-```text
-MMC_models/MMC_phase_hackathon_circuit4_HAAS_may1_localrank.slx
+```matlab
+m_i = max(0.0, min(double(m_arm) + dm, 1.0));
 ```
 
-The model represents the current MATLAB/Simulink development stage based on a **local-rank voltage-balancing strategy**. The repository adds documentation, embedded-code placeholders, and a control-roadmap structure so that the project can later be migrated toward OwnTech/TWIST firmware.
+This can create a problem because each submodule independently perturbs the common arm modulation command. The result can be:
+
+- distorted output voltage;
+- capacitor-voltage ripple;
+- uneven upper/lower arm behavior;
+- switching chatter around current zero-crossing;
+- poor compatibility with later decentralized control.
+
+The corrected version preserves the dominant arm modulation command:
+
+```matlab
+m = min(max(double(m_arm), 0.0), 1.0);
+```
+
+Then neighbor information is used only as a small bounded rank/balancing bias, not as a large independent modulation perturbation.
+
+Full explanation:
+
+```text
+docs/localrank_correction_v1.md
+```
 
 ---
 
-## 2. Control concept
+## 4. Control architecture
 
-The intended control stack is:
+The intended control flow is:
 
 ```text
-Outer voltage / power reference
+arm modulation command m_arm
         ↓
-Closed-loop AC current / arm-current control
+saturation and validity check
         ↓
-Arm voltage reference generation
+local neighbor voltage feedback
         ↓
-NLM / NLC insertion-number generation
+small bounded local-rank bias
         ↓
-Voltage-balancing layer
-        ↓
-Submodule gate commands
+submodule gate/duty command
 ```
 
-The uploaded model is kept as the primary simulation artifact. The documentation explains how the current local-rank approach can be extended to consensus-based decentralized balancing.
+This is still an open-loop local-rank controller. It is not yet a full closed-loop MMC controller. The next step should be a closed-loop arm-current and/or circulating-current correction layer.
 
 ---
 
-## 3. Current local-rank method
+## 5. Local-rank versus consensus
 
-The current local-rank method uses local capacitor-voltage information to assign insertion priority. In simple form, each submodule is evaluated by a local voltage-balancing metric:
+This repository also documents the difference between the current **local-rank** method and a future **consensus-based** decentralized method.
+
+Local rank:
 
 ```text
-rank_i = f(Vc_i, i_arm, insertion_need)
+select submodules using voltage priority / rank
 ```
 
-Typical rule:
-
-- if the arm current charges inserted capacitors, select lower-voltage capacitors first;
-- if the arm current discharges inserted capacitors, select higher-voltage capacitors first;
-- if a submodule is unavailable or faulty, exclude it from the candidate list.
-
-This is effective for simulation and is relatively simple to implement, but it can still depend on arm-level information or global/centralized ordering if not carefully redesigned.
-
----
-
-## 4. Consensus algorithm difference
-
-A consensus-based method is different from local rank because each submodule does not only compare itself against a fixed local list. Instead, the submodules iteratively exchange information with neighbors and converge toward a shared balancing variable, for example the average capacitor voltage or a distributed priority value.
-
-Simplified consensus update:
+Consensus:
 
 ```text
 x_i(k+1) = x_i(k) + α Σ a_ij [x_j(k) - x_i(k)]
 ```
 
-where:
+Detailed comparison:
 
-- `x_i` is the local estimate or balancing state of submodule `i`;
-- `x_j` is the neighbor state;
-- `a_ij` is the neighbor connection weight;
-- `α` is the consensus step size.
-
-The key difference is:
-
-| Aspect | Local-rank balancing | Consensus balancing |
-|---|---|---|
-| Main idea | Select SMs by voltage ranking | Make SM states converge through neighbor exchange |
-| Communication | Minimal, may be local or centralized depending on implementation | Neighbor-to-neighbor iterative communication |
-| Decision variable | rank / priority | local consensus state |
-| Scalability | Good for small arms, harder if global sorting is used | Better for distributed architectures |
-| Fully decentralized path | Needs leader rotation or local voting | Naturally compatible with distributed control |
-| Fault tolerance | Requires explicit fault skipping | Can tolerate topology changes if graph remains connected |
+```text
+docs/consensus_vs_local_rank.md
+```
 
 ---
 
-## 5. Forward path to decentralized control
+## 6. MATLAB usage
 
-To move from the present model to a more decentralized controller:
-
-1. Separate the control into clear layers:
-   - outer reference generation;
-   - arm-level closed-loop control;
-   - local submodule balancing;
-   - local modulation and gate generation.
-
-2. Replace global sorting with local communication:
-   - neighbor voltage exchange;
-   - local rank comparison;
-   - ring-based leader token or consensus update.
-
-3. Add a local controller inside each submodule:
-   - local capacitor-voltage measurement;
-   - local arm-current sign or local current estimate;
-   - neighbor voltage reception;
-   - local insertion/bypass/PWM decision.
-
-4. Implement fault handling:
-   - availability flag per SM;
-   - skip faulty SM in insertion decisions;
-   - re-normalize insertion number across healthy SMs.
-
-5. Prepare for OwnTech/TWIST:
-   - move MATLAB logic into `src/`;
-   - define ADC input mapping;
-   - define PWM output mapping;
-   - validate timing with ScopeMimicry / serial acquisition.
-
----
-
-## 6. Repository usage
-
-### MATLAB / Simulink
-
-Open MATLAB and run:
+After uploading the corrected `.slx` file into `MMC_models/`, open MATLAB and run:
 
 ```matlab
-open_system('MMC_models/MMC_phase_hackathon_circuit4_HAAS_may1_localrank.slx')
+cd MMC_models
+open_model
+```
+
+or directly:
+
+```matlab
+open_system('MMC_models/MMC_phase_hackathon_circuit4_HAAS_may1_localrank_corrected_v1.slx')
 ```
 
 Recommended checks:
@@ -169,45 +156,55 @@ set_param(bdroot, 'SolverType', 'Fixed-step')
 set_param(bdroot, 'SimulationMode', 'normal')
 ```
 
-### Embedded placeholder
+Observe:
 
-The `src/` folder contains C++ placeholder files for future OwnTech/TWIST migration. They are not a full firmware implementation yet. They define the expected structure for:
-
-- closed-loop NLM reference update;
-- local-rank balancing;
-- future consensus update;
-- submodule duty/gate output.
+- output voltage;
+- upper/lower arm current;
+- capacitor voltages;
+- insertion/duty signals;
+- level transitions.
 
 ---
 
-## 7. Documentation map
+## 7. Next development step
+
+Recommended next step:
+
+```text
+corrected open-loop local rank
+        ↓
+closed-loop arm-current controller
+        ↓
+NLM/NLC insertion number correction
+        ↓
+local-rank or consensus balancing
+        ↓
+OwnTech/TWIST embedded migration
+```
+
+---
+
+## 8. Documentation map
 
 | File | Purpose |
 |---|---|
-| `docs/requirements.md` | Software, hardware, and control requirements |
-| `docs/control_architecture.md` | Closed-loop MMC control architecture |
-| `docs/consensus_vs_local_rank.md` | Detailed comparison between local-rank and consensus balancing |
-| `docs/decentralized_roadmap.md` | Step-by-step path to full decentralized control |
-| `MMC_documentation/model_notes.md` | Notes specific to the included Simulink model |
+| `docs/localrank_correction_v1.md` | Main correction explanation |
+| `docs/control_architecture.md` | MMC control structure |
+| `docs/requirements.md` | Requirements and validation checklist |
+| `docs/consensus_vs_local_rank.md` | Difference between local rank and consensus |
+| `docs/decentralized_roadmap.md` | Roadmap to decentralized MMC control |
+| `MMC_documentation/model_notes.md` | Model-specific notes |
 
 ---
 
-## 8. Status
+## 9. Status
 
 Current status:
 
-- Simulink model included;
-- repository structure created;
-- documentation added;
-- embedded-code skeleton added;
-- ready for upload to GitHub.
+- repository initialized;
+- correction documentation added;
+- source-code skeleton added;
+- GitHub structure updated;
+- corrected `.slx` model prepared externally as `MMC_phase_hackathon_circuit4_HAAS_may1_localrank_corrected_v1.slx`.
 
-Next technical step:
-
-> Validate the closed-loop voltage/current response in Simulink, then isolate the submodule local controller into code-generation-compatible MATLAB Function blocks before porting to `src/`.
-
----
-
-## 9. License
-
-This project is provided under the LGPL-2.1 license style to remain compatible with the referenced OwnTech/MMC style. Confirm final licensing with project collaborators before public release.
+Because `.slx` is a binary Simulink file, upload it manually into `MMC_models/` if it does not appear in GitHub after automated update.
