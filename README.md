@@ -145,11 +145,9 @@ Check:
 Current repository status:
 
 - open-loop local-rank documentation corrected;
-- closed-loop wording removed from the main README;
-- consensus wording removed from the main README;
 - source skeleton renamed conceptually to open-loop local-rank;
 - Simulink `.slx` file must be uploaded manually because it is a binary MATLAB file.
-  ##suggest:
+  ## 7.suggest:
    closed-loop current control
 consensus balancing
 distributed MPC
