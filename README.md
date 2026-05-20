@@ -149,3 +149,9 @@ Current repository status:
 - consensus wording removed from the main README;
 - source skeleton renamed conceptually to open-loop local-rank;
 - Simulink `.slx` file must be uploaded manually because it is a binary MATLAB file.
+  ##suggest:
+   closed-loop current control
+consensus balancing
+distributed MPC
+arm current PI loops
+circulating current control
