@@ -272,7 +272,6 @@ Current repository status:
 ✔ Open-loop MMC structure
 ✔ Local-rank balancing implementation
 ✔ Improved repository consistency
-✔ OwnTech/Ayoub-style organization
 ```
 
 The Simulink `.slx` file must still be uploaded manually because binary MATLAB files cannot be directly committed through text-based GitHub API updates.
